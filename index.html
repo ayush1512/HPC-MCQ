@@ -465,16 +465,74 @@
             font-size: 1em;
         }
         .hidden { display: none; }
-    @media (max-width: 768px) {
-        .header h1 { font-size: 2em; }
-        .container { padding: 15px; }
-        .question-container { padding: 20px; }
-        .exam-grid { grid-template-columns: 1fr; }
-        .stats { grid-template-columns: repeat(2, 1fr); }
-        .code-block { font-size: 0.85em; }
-        .exam-selector { padding: 25px; }
-    }
-</style>
+        .incorrect-questions {
+            background: #fff3e0;
+            padding: 20px;
+            border-radius: 15px;
+            margin-top: 25px;
+            text-align: left;
+            border: 2px solid #ffb74d;
+        }
+        .incorrect-questions h3 {
+            color: #e65100;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        .incorrect-item {
+            background: #ffffff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ef5350;
+        }
+        .incorrect-item .q-number {
+            font-weight: bold;
+            color: #c62828;
+        }
+        .incorrect-item .q-text {
+            margin: 8px 0;
+            color: #333;
+        }
+        .incorrect-item .q-answer {
+            color: #2e7d32;
+            font-weight: 600;
+        }
+        .incorrect-item .q-your-answer {
+            color: #c62828;
+        }
+        .section-scores {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 25px 0;
+            text-align: left;
+        }
+        .section-score-card {
+            background: #f5f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #e3f2fd;
+        }
+        .section-score-card h4 {
+            color: #1976d2;
+            margin-bottom: 10px;
+            font-size: 1em;
+        }
+        .section-score-card .score-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #1976d2;
+        }
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2em; }
+            .container { padding: 15px; }
+            .question-container { padding: 20px; }
+            .exam-grid { grid-template-columns: 1fr; }
+            .stats { grid-template-columns: repeat(2, 1fr); }
+            .code-block { font-size: 0.85em; }
+            .exam-selector { padding: 25px; }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -978,6 +1036,28 @@
     let examStartTime = null;
     let timerInterval = null;
     let reviewMode = false;
+    let shuffledQuestions = []; // Store shuffled options mapping
+
+    function shuffleOptions(question) {
+        // Create array of indices [0, 1, 2, 3]
+        const indices = [0, 1, 2, 3];
+        // Fisher-Yates shuffle
+        for (let i = indices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [indices[i], indices[j]] = [indices[j], indices[i]];
+        }
+        
+        // Create shuffled options array
+        const shuffledOptions = indices.map(i => question[1][i]);
+        // Find new position of correct answer
+        const newCorrectIndex = indices.indexOf(question[2]);
+        
+        return {
+            options: shuffledOptions,
+            correctIndex: newCorrectIndex,
+            originalMapping: indices // maps new index -> original index
+        };
+    }
 
     function startExam(setNumber) {
         currentExam = setNumber;
@@ -986,6 +1066,9 @@
         questionAnswered = new Array(30).fill(false);
         examStartTime = Date.now();
         reviewMode = false;
+
+        // Shuffle options for all questions
+        shuffledQuestions = examSets[currentExam].map(q => shuffleOptions(q));
 
         document.getElementById('examSelector').classList.add('hidden');
         document.getElementById('examInterface').classList.remove('hidden');
@@ -1034,7 +1117,10 @@
     function showQuestion() {
         const questions = examSets[currentExam];
         const q = questions[currentQuestion];
+        const shuffled = shuffledQuestions[currentQuestion];
         const isAnswered = questionAnswered[currentQuestion];
+        const userAnswer = userAnswers[currentQuestion];
+        const correctIndex = shuffled.correctIndex;
         
         document.getElementById('questionContainer').innerHTML = `
             <div class="question-header">
@@ -1044,19 +1130,29 @@
             </div>
             <div class="question-text">${q[0]}</div>
             <div class="options">
-                ${q[1].map((opt, idx) => `
-                    <div class="option ${userAnswers[currentQuestion] === idx ? 'selected' : ''} 
-                        ${isAnswered ? (idx === q[2] ? 'correct' : (userAnswers[currentQuestion] === idx ? 'wrong' : '')) : ''} 
-                        ${isAnswered ? 'disabled' : ''}"
-                        onclick="${isAnswered || reviewMode ? '' : 'selectAnswer(' + idx + ')'}">
-                        <div class="option-label">${String.fromCharCode(65 + idx)}</div>
-                        <div>${opt}</div>
-                    </div>
-                `).join('')}
+                ${shuffled.options.map((opt, idx) => {
+                    let optionClass = 'option';
+                    if (userAnswer === idx) optionClass += ' selected';
+                    if (isAnswered) {
+                        if (idx === correctIndex) {
+                            optionClass += ' correct';
+                        } else if (userAnswer === idx && userAnswer !== correctIndex) {
+                            optionClass += ' wrong';
+                        }
+                        optionClass += ' disabled';
+                    }
+                    return `
+                        <div class="${optionClass}"
+                            onclick="${isAnswered || reviewMode ? '' : 'selectAnswer(' + idx + ')'}">
+                            <div class="option-label">${String.fromCharCode(65 + idx)}</div>
+                            <div>${opt}</div>
+                        </div>
+                    `;
+                }).join('')}
             </div>
             ${isAnswered || reviewMode ? `
                 <div class="explanation show">
-                    <h4>✓ Correct Answer: ${String.fromCharCode(65 + q[2])}</h4>
+                    <h4>✓ Correct Answer: ${String.fromCharCode(65 + correctIndex)}</h4>
                     <p>${q[4]}</p>
                 </div>
             ` : ''}
@@ -1087,15 +1183,41 @@
         const questions = examSets[currentExam];
         let correctCount = 0, basicCorrect = 0, basicTotal = 0;
         let intCorrect = 0, intTotal = 0, advCorrect = 0, advTotal = 0;
+        
+        // Track incorrect questions by topic/session
+        const incorrectQuestions = [];
+        const topicScores = {};
 
         userAnswers.forEach((answer, idx) => {
             const q = questions[idx];
-            if (answer === q[2]) {
+            const shuffled = shuffledQuestions[idx];
+            const isCorrect = answer === shuffled.correctIndex;
+            
+            // Track by topic
+            const topic = q[5];
+            if (!topicScores[topic]) {
+                topicScores[topic] = { correct: 0, total: 0 };
+            }
+            topicScores[topic].total++;
+            
+            if (isCorrect) {
                 correctCount++;
+                topicScores[topic].correct++;
                 if (q[3] === 'basic') basicCorrect++;
                 if (q[3] === 'intermediate') intCorrect++;
                 if (q[3] === 'advanced') advCorrect++;
+            } else {
+                // Store incorrect question details
+                incorrectQuestions.push({
+                    number: idx + 1,
+                    question: q[0],
+                    yourAnswer: answer !== null ? shuffled.options[answer] : 'Not answered',
+                    correctAnswer: shuffled.options[shuffled.correctIndex],
+                    topic: q[5],
+                    difficulty: q[3]
+                });
             }
+            
             if (q[3] === 'basic') basicTotal++;
             if (q[3] === 'intermediate') intTotal++;
             if (q[3] === 'advanced') advTotal++;
@@ -1119,6 +1241,37 @@
             6: 'SET 6: Final Exam Simulation'
         };
 
+        // Build topic/section scores HTML
+        let topicScoresHTML = '<div class="section-scores">';
+        for (const [topic, scores] of Object.entries(topicScores)) {
+            const topicPercentage = ((scores.correct / scores.total) * 100).toFixed(0);
+            topicScoresHTML += `
+                <div class="section-score-card">
+                    <h4>${topic}</h4>
+                    <div class="score-value">${scores.correct}/${scores.total} (${topicPercentage}%)</div>
+                </div>
+            `;
+        }
+        topicScoresHTML += '</div>';
+
+        // Build incorrect questions HTML
+        let incorrectHTML = '';
+        if (incorrectQuestions.length > 0) {
+            incorrectHTML = `
+                <div class="incorrect-questions">
+                    <h3>❌ Incorrect Questions (${incorrectQuestions.length})</h3>
+                    ${incorrectQuestions.map(iq => `
+                        <div class="incorrect-item">
+                            <div class="q-number">Q${iq.number} - ${iq.topic} (${iq.difficulty})</div>
+                            <div class="q-text">${iq.question.substring(0, 150)}${iq.question.length > 150 ? '...' : ''}</div>
+                            <div class="q-your-answer">Your Answer: ${iq.yourAnswer}</div>
+                            <div class="q-answer">Correct Answer: ${iq.correctAnswer}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
         document.getElementById('statsDisplay').innerHTML = `
             <div class="stat-card"><div class="stat-value">${correctCount}/30</div><div class="stat-label">Correct Answers</div></div>
             <div class="stat-card"><div class="stat-value" style="color: ${passed ? '#2e7d32' : '#c62828'}">${passed ? 'PASS ✓' : 'FAIL ✗'}</div><div class="stat-label">Result (70% Required)</div></div>
@@ -1127,6 +1280,9 @@
             <div class="stat-card"><div class="stat-value">${intCorrect}/${intTotal}</div><div class="stat-label">Intermediate</div></div>
             <div class="stat-card"><div class="stat-value">${advCorrect}/${advTotal}</div><div class="stat-label">Advanced</div></div>
         `;
+        
+        // Append topic scores and incorrect questions after stats
+        document.getElementById('statsDisplay').insertAdjacentHTML('afterend', topicScoresHTML + incorrectHTML);
 
         const resultsHeader = document.querySelector('#results h2');
         resultsHeader.innerHTML = `📊 ${setNames[currentExam]} - Results`;
@@ -1144,6 +1300,12 @@
 
     function goBackToSelector() {
         if(timerInterval) clearInterval(timerInterval);
+        // Clean up any appended elements
+        const sectionScores = document.querySelector('.section-scores');
+        const incorrectQuestions = document.querySelector('.incorrect-questions');
+        if (sectionScores) sectionScores.remove();
+        if (incorrectQuestions) incorrectQuestions.remove();
+        
         document.getElementById('examInterface').classList.add('hidden');
         document.getElementById('results').classList.add('hidden');
         document.getElementById('examSelector').classList.remove('hidden');
